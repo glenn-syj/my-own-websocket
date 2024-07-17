@@ -1,7 +1,5 @@
 <template>
-    <v-main>
-
-    
+  <v-main>
     <div id="main-content" class="container">
       <div class="row">
         <div class="col-md-6">
@@ -9,7 +7,9 @@
             <div class="form-group">
               <label for="connect">WebSocket connection:</label>
               <button class="btn btn-default" :disabled="connected">Connect</button>
-              <button class="btn btn-default" :disabled="!connected" @click.prevent="disconnect">Disconnect</button>
+              <button class="btn btn-default" :disabled="!connected" @click.prevent="disconnect">
+                Disconnect
+              </button>
             </div>
           </form>
         </div>
@@ -17,10 +17,29 @@
           <form class="form-inline" @submit.prevent="sendName">
             <div class="form-group">
               <label for="name">What is your name?</label>
-              <input v-model="name" type="text" id="name" class="form-control" placeholder="Your name here..." />
+              <input
+                v-model="name"
+                type="text"
+                id="name"
+                class="form-control"
+                placeholder="Your name here..."
+              />
             </div>
             <button class="btn btn-default" :disabled="!connected">Send</button>
           </form>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-6">
+          <button class="btn btn-primary" @click="subscribeRoom('room1')" :disabled="!connected">
+            Subscribe to Room 1
+          </button>
+          <button class="btn btn-primary" @click="subscribeRoom('room2')" :disabled="!connected">
+            Subscribe to Room 2
+          </button>
+          <button class="btn btn-primary" @click="subscribeRoom('room3')" :disabled="!connected">
+            Subscribe to Room 3
+          </button>
         </div>
       </div>
       <div class="row">
@@ -40,80 +59,101 @@
         </div>
       </div>
     </div>
-</v-main>
+  </v-main>
 </template>
-  
+
 <script setup>
-import { ref } from 'vue';
+import { ref } from 'vue'
 import SockJS from 'sockjs-client/dist/sockjs.min.js'
-import { Client as StompJsClient } from '@stomp/stompjs';
+import { Client as StompJsClient } from '@stomp/stompjs'
 
-const name = ref('');
-const greetings = ref([]);
-const connected = ref(false);
+const name = ref('')
+const greetings = ref([])
+const connected = ref(false)
+let currentSubscription = ref(null)
 
-let stompClient;
+let stompClient
 
 const connect = () => {
-  const socket = new SockJS('https://localhost:443/gs-guide-websocket');
+  const socket = new SockJS('https://localhost:443/ws')
   stompClient = new StompJsClient({
     webSocketFactory: () => socket,
     connectHeaders: {},
     debug: function (str) {
-      console.log(str);
+      console.log(str)
     },
     reconnectDelay: 5000,
     heartbeatIncoming: 4000,
-    heartbeatOutgoing: 4000,
-  });
+    heartbeatOutgoing: 4000
+  })
 
   stompClient.onConnect = (frame) => {
-    setConnected(true);
-    console.log('Connected: ' + frame);
-    stompClient.subscribe('/topic/greetings', (greeting) => {
-      showGreeting(JSON.parse(greeting.body).content);
-    });
-  };
+    setConnected(true)
+    console.log('Connected: ' + frame)
+  }
 
   stompClient.onWebSocketError = (error) => {
-    console.error('Error with websocket', error);
-  };
+    console.error('Error with websocket', error)
+  }
 
   stompClient.onStompError = (frame) => {
-    console.error('Broker reported error: ' + frame.headers['message']);
-    console.error('Additional details: ' + frame.body);
-  };
+    console.error('Broker reported error: ' + frame.headers['message'])
+    console.error('Additional details: ' + frame.body)
+  }
 
-  stompClient.activate();
-};
+  stompClient.activate()
+}
 
 const disconnect = () => {
   if (stompClient) {
-    stompClient.deactivate();
+    stompClient.deactivate()
   }
-  setConnected(false);
-  console.log('Disconnected');
-};
+  setConnected(false)
+  currentSubscription.value = null
+  console.log('Disconnected')
+}
 
 const sendName = () => {
+  if (currentSubscription.value) {
+    sendMessage(name, currentSubscription.value.roomId)
+  }
+}
+
+const sendMessage = (message, selectedRoom) => {
   if (stompClient && stompClient.connected) {
     stompClient.publish({
-      destination: '/app/hello',
-      body: JSON.stringify({ name: name.value }),
-    });
+      destination: `/app/chat.sendMessage`,
+      body: JSON.stringify({
+        sender: 'User',
+        content: message.value,
+        roomId: selectedRoom
+      })
+    })
+    message.value = ''
   }
-};
+}
 
 const setConnected = (connect) => {
-  connected.value = connect;
-};
+  connected.value = connect
+}
 
 const showGreeting = (message) => {
-  greetings.value.push(message);
-};
+  greetings.value.push(message)
+}
 
+const subscribeRoom = (roomId) => {
+  if (stompClient && stompClient.connected) {
+    if (currentSubscription.value) {
+      currentSubscription.value.unsubscribe()
+      console.log(`Unsubscribed from ${currentSubscription.value.roomId}`)
+    }
+    currentSubscription.value = stompClient.subscribe(`/topic/${roomId}`, (greeting) => {
+      showGreeting(JSON.parse(greeting.body).content)
+    })
+    currentSubscription.value.roomId = roomId
+    console.log(`Subscribed to ${roomId}`)
+  }
+}
 </script>
 
-<style>
-
-</style>  
+<style></style>
